@@ -1,106 +1,110 @@
-/*
-How can improve and scale it?
-1. network side -> split requests to servers 
-2. we need to use database and not in-memory (meilisearch, clickhouse, elasticsearch) I think REDIS is one of good
-3. Improve searching - not iterate on all items we need to search by key
-    - We can even categorise by first char or ip range
-4. To be able to detect and ban TCP attacks
-*/
-
-const HOSTNAME = "127.0.0.1"
+const HOSTNAME = "127.0.0.1";
 const PORT = 3000;
 
 interface User {
     nickname: string;
-    socket: any; // TODO: Change to Bun.Socket
+    socket: any;
 }
 
+// Maps for tracking connected users
 const clients = new Map<string, User>();
-const broadcast = (sender: any, dataMsg: string) => {
-    console.log(`Forwarding ${dataMsg} to everyone - room`)
-    for (const client of clients) {
-        if (sender === undefined || (client[1] && client[1].socket !== sender)) {
-            client[1].socket.write(dataMsg);
+const socketToUser = new Map<any, string>();
+
+/**
+ * Broadcast a message to all connected clients, except the sender.
+ */
+const broadcast = (sender: any | null, message: string) => {
+    console.log(`📢 Broadcasting: ${message}`);
+    
+    for (const user of clients.values()) {
+        if (user.socket !== sender) {
+            user.socket.write(message);
         }
     }
 };
 
-const getUser = (socket: any) => {
-    for (const client of clients) {
-        if (client[1].socket === socket) {
-            return client[1];
-        }
-    }
-    return undefined;
+/**
+ * Get the user associated with a socket.
+ */
+const getUser = (socket: any): User | undefined => {
+    const nickname = socketToUser.get(socket);
+    return nickname ? clients.get(nickname) : undefined;
 };
 
+/**
+ * Remove a user from the chat when they disconnect.
+ */
 const removeClient = (socket: any) => {
-    for (const client of clients) {
-        if (client[1].socket === socket) {
-            let msg: string = `User '${client[0]}' left.\n`;
-            broadcast(socket, msg);
-            clients.delete(client[0]);
-        }
-    }
+    const nickname = socketToUser.get(socket);
+    if (!nickname) return;
+
+    clients.delete(nickname);
+    socketToUser.delete(socket);
+
+    console.log(`❌ User '${nickname}' disconnected.`);
+    broadcast(socket, `👋 User '${nickname}' left the chat.\r\n`);
 };
 
-const welcome = (socket: any) => {
-    if (!socket) return;
+/**
+ * Send a welcome message to a newly joined user.
+ */
+const welcomeUser = (socket: any) => {
+    const nickname = socketToUser.get(socket);
+    if (!nickname) return;
 
-    if (clients.size === 1) {
-        socket.write(`Welcome to the room. You are the only one in the room.\n`);
-    } else {
-        socket.write(`Welcome to the room. Number of online users - ${clients.size}.\n`)
+    const onlineUsers = [...clients.keys()].filter(user => user !== nickname);
+    const userCount = clients.size;
 
-        const user_nicknames: string[] = [];
-        clients.forEach((client: User) => client.socket !== socket ? user_nicknames.push(client.nickname) : undefined);
-        socket.write("List of online users are: " + user_nicknames.join(", "));
-    }
+    const newLine = "\r\n"; // Ensure cross-platform compatibility (Windows: \r\n, Unix: \n)
+    const message = userCount === 1
+        ? `🎉 Welcome! You are the only user here.${newLine}`
+        : `🎉 Welcome! There are ${userCount} users online.${newLine}👥 Online users: ${onlineUsers.join(", ")}${newLine}`;
+
+    socket.write(message);
 };
 
+/**
+ * Handle new client connections and interactions.
+ */
 const server = Bun.listen({
     hostname: HOSTNAME,
     port: PORT,
     socket: {
         open(socket: any) {
-            console.log("Client connected:", socket.remoteAddress);
-            socket.write("Welcome to the community. Please type your nickname:\n> ");
+            console.log(`✅ Client connected: ${socket.remoteAddress}`);
+            socket.write("👋 Welcome! Enter your nickname:\r\n> ");
         },
-        data(socket: any, data: any) {
-            // TODO: add a custom parameter to socket
-            const msg: string = data.toString().trim();
-            if (msg === "") return;
+        data(socket: any, rawData: Buffer) {
+            const msg = rawData.toString().trim();
+            if (!msg) return;
 
-            const isNew: User | undefined = getUser(socket);
-            console.log("isNew:", isNew);
-            if (isNew === undefined) {
+            let user = getUser(socket);
+
+            if (!user) {
                 if (clients.has(msg)) {
-                    socket.write("Error: this nickname already exists, please choose another nickname.\n> ");
+                    socket.write("❌ Error: Nickname already taken, choose another:\r\n> ");
                     return;
-                } else {
-                    const user: User = {
-                        nickname: msg,
-                        socket: socket,
-                    };
-                    clients.set(msg, user);
-                    welcome(socket);
                 }
+
+                user = { nickname: msg, socket };
+                clients.set(msg, user);
+                socketToUser.set(socket, msg);
+
+                console.log(`👤 User registered: ${msg}`);
+                welcomeUser(socket);
             } else {
-                broadcast(socket, isNew.nickname + ": " + msg + "\r\n");
+                broadcast(socket, `💬 ${user.nickname}: ${msg}\r\n`);
             }
         },
         close(socket: any) {
-            console.log("Client disconnected:", socket.remoteAddress);
+            console.log(`🔌 Client disconnected: ${socket.remoteAddress}`);
             removeClient(socket);
         },
-        drain(socket: any) {
-            console.log("drain");
-        },
-        error(socket, error) {
-            console.log("Socket error:", error);
+        error(socket: any, err: Error) {
+            console.error(`⚠️ Socket error (${socket.remoteAddress}): ${err.message}`);
+            removeClient(socket);
         },
     },
 });
 
-console.log(`TCP Server running on ${HOSTNAME}:${PORT}`);
-console.log(server);
+console.log(`🚀 TCP Chat Server is running on ${HOSTNAME}:${PORT}`);
