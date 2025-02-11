@@ -4,11 +4,11 @@ A lightweight and efficient TCP chat server built with TypeScript and Bun. This 
 
 ## Features
 
-🚀 Blazing-fast TCP server powered by Bun
-👥 Multi-user support with real-time message broadcasting
-🔒 Automatic user registration with nickname validation
-🔌 Handles disconnections gracefully
-🎉 Welcomes new users and provides an online user list
+- 🚀 Blazing-fast TCP server powered by Bun
+- 👥 Multi-user support with real-time message broadcasting
+- 🔒 Automatic user registration with nickname validation
+- 🔌 Handles disconnections gracefully
+- 🎉 Welcomes new users and provides an online user list
 
 ## Installation
 
