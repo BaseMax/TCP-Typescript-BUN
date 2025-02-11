@@ -35,7 +35,7 @@ To start the server, run:
 bun run index.ts
 ```
 
-By default, the server runs on 127.0.0.1:3000. You can connect to it using a TCP client like nc (Netcat):
+By default, the server runs on `127.0.0.1:3000`. You can connect to it using a TCP client like `nc` (Netcat):
 
 ```
 nc 127.0.0.1 3000
